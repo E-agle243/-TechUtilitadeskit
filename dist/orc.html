@@ -1,0 +1,37 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#f5f7fb">
+  <title>OCR en el navegador - TechUtilidades</title>
+  <style>:root{--lightningcss-light:initial;--lightningcss-dark: ;color-scheme:light;color:#172033;font-synthesis:none;text-rendering:optimizelegibility;--blue:#2563eb;--muted:#64748b;--border:#dbe2ee;background:#f5f7fb;font-family:system-ui,-apple-system,Segoe UI,sans-serif}*{box-sizing:border-box}body{min-width:320px;min-height:100vh;margin:0;padding:32px 16px}main{border:1px solid var(--border);background:#fff;border-radius:16px;width:min(100%,760px);margin:0 auto;padding:clamp(20px,5vw,36px);box-shadow:0 12px 36px #1720330b}.badge{color:var(--blue);letter-spacing:.04em;text-transform:uppercase;background:#eff6ff;border-radius:999px;margin-bottom:12px;padding:5px 10px;font-size:12px;font-weight:700;display:inline-block}h1{margin:0;font-size:clamp(25px,5vw,34px)}.intro{color:var(--muted);margin:10px 0 22px;line-height:1.55}#progreso-texto{border-left:4px solid var(--blue);color:#475569;background:#f1f5f9;border-radius:6px;min-height:42px;margin:0 0 10px;padding:11px 14px;font-size:14px}#barra-progreso{width:100%;height:8px;accent-color:var(--blue);margin:0 0 18px;display:block}#barra-progreso[hidden],[hidden]{display:none!important}.file-label{margin:0 0 8px;font-size:14px;font-weight:650;display:block}input[type=file]{border:1px solid var(--border);width:100%;color:inherit;font:inherit;background:#fff;border-radius:8px;padding:12px;display:block}.actions{flex-wrap:wrap;gap:10px;margin:18px 0;display:flex}button,.download{background:var(--blue);color:#fff;min-height:40px;font:inherit;cursor:pointer;border:0;border-radius:7px;padding:9px 14px;font-size:14px;font-weight:650;text-decoration:none}button:disabled{cursor:not-allowed;opacity:.5}.download{align-items:center;display:inline-flex}h2{margin:24px 0 9px;font-size:17px}#resultado-texto{resize:vertical;border:1px solid var(--border);width:100%;min-height:170px;color:inherit;border-radius:8px;padding:12px;font:14px/1.6 ui-monospace,SFMono-Regular,Consolas,monospace;display:block}#confianza-resultado{color:var(--muted);margin:8px 0;font-size:13px}#lineas-detectadas{color:#475569;margin:0;padding-left:22px}#lineas-detectadas li{overflow-wrap:anywhere;padding:4px 0}.privacy{color:var(--muted);margin:20px 0 0;font-size:12px;line-height:1.5}@media (prefers-reduced-motion:reduce){*,:before,:after{scroll-behavior:auto!important}}</style>
+  <script type="module" crossorigin src="/-TechUtilitadeskit/assets/ocr-D7rXbl_1.js"></script>
+  <link rel="modulepreload" crossorigin href="/-TechUtilitadeskit/assets/modulepreload-polyfill-P2Xu9kJm.js">
+</head>
+<body>
+  <main>
+    <span class="badge">TechUtilidades</span>
+    <h1>Extraer texto de una imagen</h1>
+    <p class="intro">Selecciona una imagen para detectar y copiar su texto. El reconocimiento se ejecuta en este navegador.</p>
+
+    <div id="progreso-texto" role="status" aria-live="polite">Iniciando OCR…</div>
+    <progress id="barra-progreso" max="100" value="0" aria-label="Progreso del OCR"></progress>
+
+    <label class="file-label" for="subir-imagen">Imagen</label>
+    <input id="subir-imagen" type="file" accept="image/*">
+
+    <div class="actions">
+      <button id="copiar-texto" type="button" disabled>Copiar texto</button>
+      <a id="descargar-texto" class="download" href="#" download="texto-extraido.txt" hidden>Descargar texto</a>
+    </div>
+
+    <h2>Texto detectado</h2>
+    <textarea id="resultado-texto" readonly aria-label="Texto detectado" placeholder="El texto reconocido aparecerá aquí."></textarea>
+    <p id="confianza-resultado" aria-live="polite"></p>
+
+    <p class="privacy">La primera carga descarga un modelo OCR ligero (aprox. 6 MB). Si la imagen es difícil de leer, se descarga también un modelo más preciso (aprox. 31 MB), además de probar mejoras de contraste y nitidez. Los modelos se guardan en caché; las imágenes se procesan localmente y no se envían a un servidor.</p>
+  </main>
+
+</body>
+</html>

@@ -1,0 +1,75 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#f5f7fb">
+  <meta name="description" content="Convierte PDF a Word conservando el diseño o haciendo el texto editable directamente en tu navegador.">
+  <title>Convertir PDF a Word - TechUtilidades</title>
+  <style>:root{--lightningcss-light:initial;--lightningcss-dark: ;color-scheme:light;color:#172033;font-synthesis:none;text-rendering:optimizelegibility;--blue:#2563eb;--muted:#64748b;--border:#dbe2ee;background:#f5f7fb;font-family:system-ui,-apple-system,Segoe UI,sans-serif}*{box-sizing:border-box}body{min-width:320px;min-height:100vh;margin:0;padding:32px 16px}main{border:1px solid var(--border);background:#fff;border-radius:18px;width:min(100%,860px);margin:0 auto;padding:clamp(20px,5vw,40px);box-shadow:0 12px 36px #1720330b}.badge{color:var(--blue);letter-spacing:.04em;text-transform:uppercase;background:#eff6ff;border-radius:999px;margin-bottom:12px;padding:5px 10px;font-size:12px;font-weight:700;display:inline-block}h1{letter-spacing:-.035em;margin:0;font-size:clamp(27px,5vw,38px)}.intro{max-width:650px;color:var(--muted);margin:10px 0 24px;line-height:1.6}.benefits{flex-wrap:wrap;gap:8px;margin:0 0 24px;padding:0;list-style:none;display:flex}.benefits li{border:1px solid var(--border);color:#475569;border-radius:999px;padding:7px 10px;font-size:12px}.drop-zone{text-align:center;background:#f8faff;border:2px dashed #b9c7dc;border-radius:14px;place-content:center;justify-items:center;min-height:220px;padding:24px;transition:border-color .15s,background .15s;display:grid}.drop-zone:focus-within,.drop-zone.dragging{border-color:var(--blue);background:#eff6ff}.upload-icon{color:var(--blue);margin-bottom:10px;font-size:32px;line-height:1}.drop-title{margin:0;font-weight:700}.drop-help{color:var(--muted);margin:6px 0 14px;font-size:13px}.choose-file,button,.download{background:var(--blue);color:#fff;min-height:42px;font:inherit;cursor:pointer;border:0;border-radius:8px;justify-content:center;align-items:center;padding:10px 16px;font-size:14px;font-weight:700;text-decoration:none;display:inline-flex}.choose-file:hover,button:not(:disabled):hover,.download:hover{background:#1d4ed8}button:disabled{cursor:not-allowed;opacity:.5}input[type=file]{clip:rect(0, 0, 0, 0);white-space:nowrap;clip-path:inset(50%);width:1px;height:1px;position:absolute;overflow:hidden}input[type=file]:focus-visible+.choose-file{outline-offset:3px;outline:3px solid #93c5fd}#archivo-seleccionado{border:1px solid var(--border);background:#fff;border-radius:8px;justify-content:space-between;align-items:center;gap:12px;margin-top:12px;padding:12px 14px;font-size:13px;display:flex}#archivo-seleccionado[hidden],[hidden]{display:none!important}#nombre-archivo{overflow-wrap:anywhere;font-weight:650}#tamano-archivo{color:var(--muted);flex:none}.conversion-modes{border:1px solid var(--border);border-radius:10px;min-width:0;margin:20px 0;padding:14px 16px 4px}.conversion-modes legend{padding:0 6px;font-size:14px;font-weight:700}.options{color:#334155;align-items:flex-start;gap:10px;margin:8px 0 14px;font-size:14px;line-height:1.5;display:flex}.options input{width:17px;height:17px;accent-color:var(--blue);flex:none;margin:2px 0 0}.options small{color:var(--muted);font-size:12px;display:block}#progreso-texto{border-left:4px solid var(--blue);color:#475569;background:#f1f5f9;border-radius:6px;min-height:42px;margin:18px 0 10px;padding:11px 14px;font-size:14px}#barra-progreso{width:100%;height:8px;accent-color:var(--blue);margin:0 0 18px;display:block}.actions{flex-wrap:wrap;gap:10px;margin:16px 0;display:flex}.download{background:#0f766e}.download:hover{background:#115e59}h2{margin:26px 0 8px;font-size:17px}#vista-previa{border:1px solid var(--border);color:#475569;white-space:pre-wrap;overflow-wrap:anywhere;background:#fbfcfe;border-radius:8px;max-height:240px;margin:0;padding:14px;font:13px/1.6 ui-monospace,SFMono-Regular,Consolas,monospace;overflow:auto}.privacy{color:var(--muted);margin:20px 0 0;font-size:12px;line-height:1.55}@media (width<=560px){body{padding:14px 9px}#archivo-seleccionado{flex-direction:column;align-items:flex-start;gap:4px}.drop-zone{min-height:190px}}</style>
+  <script type="module" crossorigin src="/-TechUtilitadeskit/assets/toword-CX2CX5i6.js"></script>
+  <link rel="modulepreload" crossorigin href="/-TechUtilitadeskit/assets/modulepreload-polyfill-P2Xu9kJm.js">
+</head>
+<body>
+  <main>
+    <span class="badge">TechUtilidades</span>
+    <h1>Convierte PDF a Word</h1>
+    <p class="intro">Elige entre conservar cada página tal como aparece en el PDF o convertir su contenido en texto editable. Tus archivos se procesan en este dispositivo.</p>
+
+    <ul class="benefits" aria-label="Características">
+      <li>Privado: sin subir el PDF</li>
+      <li>Tablas e imágenes conservadas</li>
+      <li>OCR local para documentos escaneados</li>
+    </ul>
+
+    <section id="zona-archivo" class="drop-zone" aria-label="Seleccionar archivo PDF">
+      <span class="upload-icon" aria-hidden="true">↑</span>
+      <p class="drop-title">Arrastra tu PDF aquí</p>
+      <p class="drop-help">o selecciona un archivo PDF (máximo 30 MB y 80 páginas)</p>
+      <label>
+        <input id="subir-pdf" type="file" accept=".pdf,application/pdf">
+        <span class="choose-file">Seleccionar PDF</span>
+      </label>
+    </section>
+
+    <div id="archivo-seleccionado" hidden>
+      <span id="nombre-archivo"></span>
+      <span id="tamano-archivo"></span>
+    </div>
+
+    <fieldset class="conversion-modes">
+      <legend>Modo de conversión</legend>
+      <label class="options">
+        <input id="modo-fiel" name="modo-conversion" type="radio" value="fiel" checked>
+        <span>
+          Conservar diseño original (recomendado)
+          <small>Inserta cada página como imagen: mantiene tablas, columnas, gráficos y escaneos. El texto de las páginas no será editable.</small>
+        </span>
+      </label>
+      <label class="options">
+        <input id="modo-editable" name="modo-conversion" type="radio" value="editable">
+        <span>
+          Mantener diseño y editar el texto
+          <small>Conserva la página original como fondo y coloca el texto extraído en cuadros editables en su posición. En páginas escaneadas se aplica OCR local automáticamente. Al editar, el texto no se redistribuye como en un documento convencional.</small>
+        </span>
+      </label>
+    </fieldset>
+
+    <div class="actions">
+      <button id="convertir" type="button" disabled>Convertir a Word</button>
+      <a id="descargar-word" class="download" href="#" download hidden>Descargar documento Word</a>
+    </div>
+
+    <div id="progreso-texto" role="status" aria-live="polite">Selecciona un PDF para comenzar.</div>
+    <progress id="barra-progreso" max="100" value="0" aria-label="Progreso de conversión" hidden></progress>
+
+    <section id="resultado" hidden>
+      <h2>Vista previa del texto</h2>
+      <pre id="vista-previa"></pre>
+    </section>
+
+    <p class="privacy">El PDF nunca sale de tu navegador. El modo de diseño conserva la apariencia como imagen; el modo editable ejecuta OCR localmente para escaneos. En ese modo, las tablas y columnas complejas pueden necesitar ajustes en Word.</p>
+  </main>
+
+</body>
+</html>

@@ -1,0 +1,169 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#f5f7fb">
+  <title>OCR en el navegador - TechUtilidades</title>
+  <style>
+    :root {
+      color-scheme: light;
+      font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+      color: #172033;
+      background: #f5f7fb;
+      font-synthesis: none;
+      text-rendering: optimizeLegibility;
+      --blue: #2563eb;
+      --muted: #64748b;
+      --border: #dbe2ee;
+    }
+
+    * { box-sizing: border-box; }
+
+    body {
+      min-width: 320px;
+      min-height: 100vh;
+      margin: 0;
+      padding: 32px 16px;
+    }
+
+    main {
+      width: min(100%, 760px);
+      margin: 0 auto;
+      padding: clamp(20px, 5vw, 36px);
+      border: 1px solid var(--border);
+      border-radius: 16px;
+      background: #fff;
+      box-shadow: 0 12px 36px #1720330b;
+    }
+
+    .badge {
+      display: inline-block;
+      margin-bottom: 12px;
+      padding: 5px 10px;
+      border-radius: 999px;
+      background: #eff6ff;
+      color: var(--blue);
+      font-size: 12px;
+      font-weight: 700;
+      letter-spacing: .04em;
+      text-transform: uppercase;
+    }
+
+    h1 { margin: 0; font-size: clamp(25px, 5vw, 34px); }
+    .intro { margin: 10px 0 22px; color: var(--muted); line-height: 1.55; }
+
+    #progreso-texto {
+      min-height: 42px;
+      margin: 0 0 10px;
+      padding: 11px 14px;
+      border-left: 4px solid var(--blue);
+      border-radius: 6px;
+      background: #f1f5f9;
+      color: #475569;
+      font-size: 14px;
+    }
+
+    #barra-progreso {
+      display: block;
+      width: 100%;
+      height: 8px;
+      margin: 0 0 18px;
+      accent-color: var(--blue);
+    }
+
+    #barra-progreso[hidden], [hidden] { display: none !important; }
+
+    .file-label {
+      display: block;
+      margin: 0 0 8px;
+      font-size: 14px;
+      font-weight: 650;
+    }
+
+    input[type="file"] {
+      display: block;
+      width: 100%;
+      padding: 12px;
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      background: #fff;
+      color: inherit;
+      font: inherit;
+    }
+
+    .actions {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+      margin: 18px 0;
+    }
+
+    button, .download {
+      min-height: 40px;
+      padding: 9px 14px;
+      border: 0;
+      border-radius: 7px;
+      background: var(--blue);
+      color: #fff;
+      font: inherit;
+      font-size: 14px;
+      font-weight: 650;
+      text-decoration: none;
+      cursor: pointer;
+    }
+
+    button:disabled { cursor: not-allowed; opacity: .5; }
+    .download { display: inline-flex; align-items: center; }
+
+    h2 { margin: 24px 0 9px; font-size: 17px; }
+
+    #resultado-texto {
+      display: block;
+      width: 100%;
+      min-height: 170px;
+      resize: vertical;
+      padding: 12px;
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      color: inherit;
+      font: 14px/1.6 ui-monospace, SFMono-Regular, Consolas, monospace;
+    }
+
+    #confianza-resultado { margin: 8px 0; color: var(--muted); font-size: 13px; }
+    #lineas-detectadas { margin: 0; padding-left: 22px; color: #475569; }
+    #lineas-detectadas li { padding: 4px 0; overflow-wrap: anywhere; }
+    .privacy { margin: 20px 0 0; color: var(--muted); font-size: 12px; line-height: 1.5; }
+
+    @media (prefers-reduced-motion: reduce) {
+      *, *::before, *::after { scroll-behavior: auto !important; }
+    }
+  </style>
+</head>
+<body>
+  <main>
+    <span class="badge">TechUtilidades</span>
+    <h1>Extraer texto de una imagen</h1>
+    <p class="intro">Selecciona una imagen para detectar y copiar su texto. El reconocimiento se ejecuta en este navegador.</p>
+
+    <div id="progreso-texto" role="status" aria-live="polite">Iniciando OCR…</div>
+    <progress id="barra-progreso" max="100" value="0" aria-label="Progreso del OCR"></progress>
+
+    <label class="file-label" for="subir-imagen">Imagen</label>
+    <input id="subir-imagen" type="file" accept="image/*">
+
+    <div class="actions">
+      <button id="copiar-texto" type="button" disabled>Copiar texto</button>
+      <a id="descargar-texto" class="download" href="#" download="texto-extraido.txt" hidden>Descargar texto</a>
+    </div>
+
+    <h2>Texto detectado</h2>
+    <textarea id="resultado-texto" readonly aria-label="Texto detectado" placeholder="El texto reconocido aparecerá aquí."></textarea>
+    <p id="confianza-resultado" aria-live="polite"></p>
+
+    <p class="privacy">La primera carga descarga un modelo OCR ligero (aprox. 6 MB). Si la imagen es difícil de leer, se descarga también un modelo más preciso (aprox. 31 MB), además de probar mejoras de contraste y nitidez. Los modelos se guardan en caché; las imágenes se procesan localmente y no se envían a un servidor.</p>
+  </main>
+
+  <script type="module" src="./app/scan_ai.ts"></script>
+</body>
+</html>
