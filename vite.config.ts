@@ -1,4 +1,5 @@
 import { defineConfig, transformWithOxc } from 'vite';
+import { resolve } from 'path';
 
 const runonwebTypescriptPlugin = {
   name: 'transpile-runonweb-typescript',
@@ -12,7 +13,18 @@ const runonwebTypescriptPlugin = {
 
 export default defineConfig({
   // CAMBIA ESTO: Pon el nombre exacto de tu repositorio de GitHub entre las barras diagonales
-  base: '/-TechUtilitadeskit/', 
+  base: '/-TechUtilidadeskit/',
+  build: {
+    rollupOptions: {
+      input: {
+        orc: resolve(__dirname, 'orc.html'),
+        remover: resolve(__dirname, 'remover.html'),
+        toword: resolve(__dirname, 'toword.html'),
+        transcribe: resolve(__dirname, 'transcribe.html'),
+      },
+    },
+  },
+
   
   plugins: [runonwebTypescriptPlugin],
   optimizeDeps: {

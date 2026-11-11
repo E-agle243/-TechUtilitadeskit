@@ -10,6 +10,7 @@ type ModoConversion = 'fluido' | 'hibrido' | 'imagen';
 type FragmentoTexto = {
   texto: string;
   x: number;
+  xOriginal: number;
   y: number;
   ancho: number;
   tamano: number;
@@ -29,6 +30,7 @@ type LineaTexto = {
   fragmentos: FragmentoTexto[];
   columnas: FragmentoTexto[][];
   x: number;
+  xOriginal: number;
   y: number;
   ancho: number;
   tamano: number;
@@ -130,10 +132,21 @@ type InspectorVisual = {
   muestrearFondoHex: (xPdf: number, yPdf: number, anchoPdf: number, altoPdf: number) => string | undefined;
   muestrearFondoBandaCompletaHex: (yPdf: number, altoPdf: number, anchoPaginaPdf: number) => string | undefined;
   muestrearColorTextoHex: (xPdf: number, yPdf: number, anchoPdf: number, altoPdf: number, fondoHex?: string) => string;
-  medirDensidadEInclinacion: (xPdf: number, yPdf: number, anchoPdf: number, tamanoPdf: number) => { densidad: number; inclinacion: number };
+  medirRasgosOpticosGlifos: (xPdf: number, yPdf: number, anchoPdf: number, tamanoPdf: number) => {
+    densidad: number;
+    esInclinada: boolean;
+  };
   detectarBordeIzquierdoHex: (xPdf: number, yPdf: number, altoPdf: number, anchoPaginaPdf: number) => string | undefined;
-  detectarCajaCerradaReal: (xPdf: number, yPdf: number, anchoPdf: number, altoPdf: number, anchoPaginaPdf: number) => { tipo: 'none' | 'solid' | 'dashed'; color?: string };
-  detectarReglaDebajoDeLinea: (yLineaPdf: number, yLimiteInferiorPdf: number, anchoPaginaPdf: number) => { colorHex: string; grosorOctavosPt: number } | undefined;
+  detectarCajaCerradaReal: (xPdf: number, yPdf: number, anchoPdf: number, altoPdf: number, anchoPaginaPdf: number) => {
+    tipo: 'none' | 'solid' | 'dashed';
+    color?: string;
+  };
+  detectarReglaDebajoDeLinea: (
+    xInicioPdf: number,
+    yFondoLineaActualPdf: number,
+    yTopeLineaSiguientePdf: number,
+    anchoPaginaPdf: number,
+  ) => { colorHex: string; grosorOctavosPt: number } | undefined;
   detectarIntervalosSubrayadoTachado: (xPdf: number, yPdf: number, anchoPdf: number, tamanoPdf: number) => {
     subrayados: [number, number][];
     tachados: [number, number][];
@@ -397,8 +410,8 @@ function inicializarConvertidor(): void {
         const [x1, y2] = aCanvas(xPdf, yPdf);
         const [x2, y1] = aCanvas(xPdf + anchoPdf, yPdf + altoPdf);
         const puntos: [number, number][] = [
-          [x1 - 5, (y1 + y2) / 2],
-          [x1 - 8, y1 + 2],
+          [x1 - 6, (y1 + y2) / 2],
+          [x1 - 10, y1 + 2],
           [x1 + 6, y1 - 4],
           [(x1 + x2) / 2, y1 - 4],
           [x2 + 6, (y1 + y2) / 2],
@@ -406,13 +419,13 @@ function inicializarConvertidor(): void {
         const muestras = puntos.map(([px, py]) => obtenerPixel(px, py));
         muestras.sort((a, b) => (a[0] + a[1] + a[2]) - (b[0] + b[1] + b[2]));
         const mediana = muestras[Math.floor(muestras.length / 2)];
-        if (mediana[0] > 251 && mediana[1] > 251 && mediana[2] > 251) return undefined;
+        if (mediana[0] > 252 && mediana[1] > 252 && mediana[2] > 252) return undefined;
         return rgbAHex(mediana[0], mediana[1], mediana[2]);
       },
 
       muestrearFondoBandaCompletaHex: (yPdf, altoPdf, anchoPaginaPdf) => {
-        const [xIzq, yBot] = aCanvas(58, yPdf);
-        const [xDer, yTop] = aCanvas(anchoPaginaPdf - 58, yPdf + altoPdf);
+        const [xIzq, yBot] = aCanvas(56, yPdf);
+        const [xDer, yTop] = aCanvas(anchoPaginaPdf - 56, yPdf + altoPdf);
         const yMuestra = Math.max(0, Math.round(yTop - 3));
         const puntos: [number, number, number][] = [];
         for (let f = 0.1; f <= 0.9; f += 0.1) {
@@ -420,9 +433,8 @@ function inicializarConvertidor(): void {
         }
         puntos.sort((a, b) => (a[0] + a[1] + a[2]) - (b[0] + b[1] + b[2]));
         const med = puntos[Math.floor(puntos.length / 2)];
-        if (med[0] > 251 && med[1] > 251 && med[2] > 251) return undefined;
-        // Confirmar que también haya ese fondo cerca del margen izquierdo del bloque
-        const pIzq = obtenerPixel(xIzq + 8, (yTop + yBot) / 2);
+        if (med[0] > 252 && med[1] > 252 && med[2] > 252) return undefined;
+        const pIzq = obtenerPixel(xIzq + 6, (yTop + yBot) / 2);
         if (distanciaColor(med, pIzq) > 25) return undefined;
         return rgbAHex(med[0], med[1], med[2]);
       },
@@ -456,21 +468,23 @@ function inicializarConvertidor(): void {
         return rgbAHex(mejorPixel[0], mejorPixel[1], mejorPixel[2]);
       },
 
-      medirDensidadEInclinacion: (xPdf, yPdf, anchoPdf, tamanoPdf) => {
-        if (anchoPdf < 6) return { densidad: 0, inclinacion: 0 };
+      /**
+       * Mide la densidad de tinta y si las astas verticales de los glifos están inclinadas hacia
+       * la derecha (cursiva real) frente a trazos verticales rectos (fuente redonda normal).
+       */
+      medirRasgosOpticosGlifos: (xPdf, yPdf, anchoPdf, tamanoPdf) => {
+        if (anchoPdf < 8) return { densidad: 0, esInclinada: false };
         const [x1, yBase] = aCanvas(xPdf, yPdf);
         const [x2, yTope] = aCanvas(xPdf + anchoPdf, yPdf + tamanoPdf);
         const altoPx = Math.max(1, yBase - yTope);
-        const minX = Math.max(0, Math.floor(x1));
-        const maxX = Math.min(width - 1, Math.ceil(x2));
-        const ySupMin = Math.max(0, Math.floor(yBase - altoPx * 0.68));
-        const ySupMax = Math.max(0, Math.floor(yBase - altoPx * 0.36));
-        const yInfMin = Math.max(0, Math.floor(yBase - altoPx * 0.35));
-        const yInfMax = Math.min(height - 1, Math.ceil(yBase - altoPx * 0.06));
+        const minX = Math.max(2, Math.floor(x1));
+        const maxX = Math.min(width - 4, Math.ceil(x2));
+        const yMin = Math.max(0, Math.floor(yBase - altoPx * 0.68));
+        const yMax = Math.min(height - 1, Math.ceil(yBase - altoPx * 0.08));
 
         let tinta = 0;
         let total = 0;
-        for (let py = ySupMin; py <= yInfMax; py++) {
+        for (let py = yMin; py <= yMax; py++) {
           for (let px = minX; px <= maxX; px++) {
             total++;
             const p = obtenerPixel(px, py);
@@ -480,25 +494,45 @@ function inicializarConvertidor(): void {
           }
         }
 
+        // Comparar correlación vertical recta (dx = 0) vs inclinada ~12 grados a la derecha (dx = +2px)
+        const yFilaSup = Math.max(0, Math.round(yBase - altoPx * 0.56));
+        const yFilaInf = Math.max(0, Math.round(yBase - altoPx * 0.16));
+        const shiftCursiva = Math.max(1, Math.round((yFilaInf - yFilaSup) * 0.22));
+        let coincidenciasRectas = 0;
+        let coincidenciasInclinadas = 0;
+
+        for (let px = minX; px <= maxX - shiftCursiva; px++) {
+          const pInf = obtenerPixel(px, yFilaInf);
+          const oscuroInf = distanciaColor(pInf, [255, 255, 255]) > 95;
+          if (!oscuroInf) continue;
+
+          const pSupRecto = obtenerPixel(px, yFilaSup);
+          const pSupInclinado = obtenerPixel(px + shiftCursiva, yFilaSup);
+          if (distanciaColor(pSupRecto, [255, 255, 255]) > 95) coincidenciasRectas++;
+          if (distanciaColor(pSupInclinado, [255, 255, 255]) > 95) coincidenciasInclinadas++;
+        }
+
+        const esInclinada =
+          coincidenciasInclinadas >= 3 &&
+          coincidenciasInclinadas > coincidenciasRectas * 1.35;
+
         return {
           densidad: tinta / Math.max(1, total),
-          inclinacion: 0,
+          esInclinada,
         };
       },
 
       detectarBordeIzquierdoHex: (xPdf, yPdf, altoPdf, anchoPaginaPdf) => {
-        const [xBase, yCentro] = aCanvas(xPdf, yPdf + altoPdf * 0.35);
+        const [xTexto, yCentro] = aCanvas(xPdf, yPdf + altoPdf * 0.35);
+        const [xMargenPag] = aCanvas(28, yPdf + altoPdf * 0.35);
         const [xDerPag] = aCanvas(anchoPaginaPdf - 35, yPdf + altoPdf * 0.35);
-        const maxDx = Math.round(42 * escala);
 
-        for (let dx = 3; dx <= maxDx; dx++) {
-          const px = xBase - dx;
-          if (px < 10) break;
+        for (let px = Math.floor(xTexto - 3); px >= Math.max(5, Math.floor(xMargenPag)); px--) {
           const p = obtenerPixel(px, yCentro);
           const saturacion = Math.max(p[0], p[1], p[2]) - Math.min(p[0], p[1], p[2]);
-          if (distanciaColor(p, [255, 255, 255]) > 42 && (saturacion > 28 || p[0] < 175)) {
-            const pArr = obtenerPixel(px, yCentro - Math.round(5 * escala));
-            const pAbj = obtenerPixel(px, yCentro + Math.round(5 * escala));
+          if (distanciaColor(p, [255, 255, 255]) > 42 && (saturacion > 25 || p[0] < 175)) {
+            const pArr = obtenerPixel(px, yCentro - Math.round(4 * escala));
+            const pAbj = obtenerPixel(px, yCentro + Math.round(4 * escala));
             const pDer = obtenerPixel(xDerPag, yCentro);
             if (
               distanciaColor(p, pArr) < 28 &&
@@ -520,13 +554,11 @@ function inicializarConvertidor(): void {
         const [xMargenDer] = aCanvas(anchoPaginaPdf - 36, yPdf);
         const xCentroPag = Math.round((xMargenIzq + xMargenDer) / 2);
 
-        // 1. Buscar borde superior e inferior alrededor del bloque en el centro de la página
         let yBordeSup = -1;
         let colorSup: [number, number, number] | null = null;
-        for (let dy = 3; dy <= Math.round(24 * escala); dy++) {
+        for (let dy = 3; dy <= Math.round(26 * escala); dy++) {
           const p = obtenerPixel(xCentroPag, yTop - dy);
-          if (distanciaColor(p, [255, 255, 255]) > 16 && distanciaColor(p, [248, 250, 252]) > 10) {
-            // Confirmar que arriba del borde superior sea blanco
+          if (distanciaColor(p, [255, 255, 255]) > 14 && distanciaColor(p, [248, 250, 252]) > 9) {
             const pExterior = obtenerPixel(xCentroPag, yTop - dy - 4);
             if (distanciaColor(pExterior, [255, 255, 255]) < 15) {
               yBordeSup = yTop - dy;
@@ -538,9 +570,9 @@ function inicializarConvertidor(): void {
         if (yBordeSup < 0 || !colorSup) return { tipo: 'none' };
 
         let yBordeInf = -1;
-        for (let dy = 3; dy <= Math.round(32 * escala); dy++) {
+        for (let dy = 3; dy <= Math.round(34 * escala); dy++) {
           const p = obtenerPixel(xCentroPag, yBot + dy);
-          if (distanciaColor(p, [255, 255, 255]) > 16 && distanciaColor(p, [248, 250, 252]) > 10) {
+          if (distanciaColor(p, [255, 255, 255]) > 14 && distanciaColor(p, [248, 250, 252]) > 9) {
             const pExterior = obtenerPixel(xCentroPag, yBot + dy + 4);
             if (distanciaColor(pExterior, [255, 255, 255]) < 15) {
               yBordeInf = yBot + dy;
@@ -550,14 +582,13 @@ function inicializarConvertidor(): void {
         }
         if (yBordeInf < 0) return { tipo: 'none' };
 
-        // 2. Confirmar que existan paredes laterales izquierda y derecha
         let tieneParedIzq = false;
-        for (let px = Math.floor(xMargenIzq - 10); px <= Math.min(width - 1, Math.ceil(x1 - 4)); px++) {
+        for (let px = Math.floor(xMargenIzq - 12); px <= Math.min(width - 1, Math.ceil(x1 - 3)); px++) {
           const p1 = obtenerPixel(px, yMedio);
           const p2 = obtenerPixel(px, yBordeSup + 3);
           if (
-            (distanciaColor(p1, [255, 255, 255]) > 16 && distanciaColor(p1, [248, 250, 252]) > 10) ||
-            (distanciaColor(p2, [255, 255, 255]) > 16 && distanciaColor(p2, [248, 250, 252]) > 10)
+            (distanciaColor(p1, [255, 255, 255]) > 14 && distanciaColor(p1, [248, 250, 252]) > 9) ||
+            (distanciaColor(p2, [255, 255, 255]) > 14 && distanciaColor(p2, [248, 250, 252]) > 9)
           ) {
             tieneParedIzq = true;
             break;
@@ -571,7 +602,7 @@ function inicializarConvertidor(): void {
         const tramosMuestra = 140;
         for (let dx = -70; dx < 70; dx++) {
           const p = obtenerPixel(xCentroPag + dx, yBordeSup);
-          const activo = distanciaColor(p, [255, 255, 255]) > 16 && distanciaColor(p, [248, 250, 252]) > 10;
+          const activo = distanciaColor(p, [255, 255, 255]) > 14 && distanciaColor(p, [248, 250, 252]) > 9;
           if (activo) activos++;
           if (dx > -70 && activo !== prevActivo) transiciones++;
           prevActivo = activo;
@@ -585,49 +616,56 @@ function inicializarConvertidor(): void {
       },
 
       /**
-       * Busca una línea divisoria horizontal de ancho completo justo debajo de `yLineaPdf`
-       * usando directamente coordenadas de Canvas (`aCanvas`), sin conversiones inversas erróneas.
+       * Escanea exclusivamente el espacio blanco vacío entre los descendentes de la línea actual
+       * (`yFondoLineaActualPdf`) y los ascendentes de la línea siguiente (`yTopeLineaSiguientePdf`).
+       * Así nunca confunde el texto con bordes ni pierde las reglas azules bajo títulos y metadatos.
        */
-      detectarReglaDebajoDeLinea: (yLineaPdf, yLimiteInferiorPdf, anchoPaginaPdf) => {
-        const [xIzq, yStartPx] = aCanvas(55, yLineaPdf - 2);
-        const [xDer, yEndPx] = aCanvas(anchoPaginaPdf - 55, Math.max(yLimiteInferiorPdf + 4, yLineaPdf - 20));
-        const minY = Math.max(0, Math.floor(Math.min(yStartPx, yEndPx)));
-        const maxY = Math.min(height - 1, Math.ceil(Math.max(yStartPx, yEndPx)));
+      detectarReglaDebajoDeLinea: (xInicioPdf, yFondoLineaActualPdf, yTopeLineaSiguientePdf, anchoPaginaPdf) => {
+        if (yFondoLineaActualPdf - yTopeLineaSiguientePdf < 4.5) return undefined;
+
+        const xIzqPdf = Math.max(40, Math.min(75, xInicioPdf));
+        const xDerPdf = anchoPaginaPdf - xIzqPdf;
+        const [xIzq, yStartPx] = aCanvas(xIzqPdf + 10, yFondoLineaActualPdf - 1);
+        const [xDer, yEndPx] = aCanvas(xDerPdf - 10, yTopeLineaSiguientePdf + 1);
+        const minY = Math.max(2, Math.floor(Math.min(yStartPx, yEndPx)));
+        const maxY = Math.min(height - 3, Math.ceil(Math.max(yStartPx, yEndPx)));
         const xMedio = Math.round((xIzq + xDer) / 2);
 
         for (let py = minY; py <= maxY; py++) {
           const pMed = obtenerPixel(xMedio, py);
           if (
-            distanciaColor(pMed, [255, 255, 255]) > 28 &&
-            distanciaColor(pMed, [241, 245, 249]) > 18 &&
-            distanciaColor(pMed, [248, 250, 252]) > 18
+            distanciaColor(pMed, [255, 255, 255]) > 22 &&
+            distanciaColor(pMed, [241, 245, 249]) > 15 &&
+            distanciaColor(pMed, [248, 250, 252]) > 15 &&
+            distanciaColor(pMed, [239, 246, 255]) > 15
           ) {
             let iguales = 0;
             let muestras = 0;
             for (let px = Math.floor(xIzq); px <= Math.ceil(xDer); px += 4) {
               muestras++;
               const p = obtenerPixel(px, py);
-              if (distanciaColor(p, pMed) < 26) iguales++;
+              if (distanciaColor(p, pMed) < 28) iguales++;
             }
 
-            if (iguales / Math.max(1, muestras) >= 0.84) {
+            if (iguales / Math.max(1, muestras) >= 0.78) {
               let finY = py;
-              while (finY + 1 < height && distanciaColor(obtenerPixel(xMedio, finY + 1), pMed) < 35) {
+              while (finY + 1 < height && distanciaColor(obtenerPixel(xMedio, finY + 1), pMed) < 38) {
                 finY++;
               }
               const grosorPx = finY - py + 1;
-              const pArriba = obtenerPixel(xMedio, py - 3);
-              const pAbajo = obtenerPixel(xMedio, finY + 3);
+              const pArriba = obtenerPixel(xMedio, py - 2);
+              const pAbajo = obtenerPixel(xMedio, finY + 2);
               if (
-                grosorPx <= Math.round(6 * escala) &&
-                distanciaColor(pArriba, [255, 255, 255]) < 22 &&
-                distanciaColor(pAbajo, [255, 255, 255]) < 22
+                grosorPx <= Math.round(7 * escala) &&
+                distanciaColor(pArriba, [255, 255, 255]) < 28 &&
+                distanciaColor(pAbajo, [255, 255, 255]) < 28
               ) {
                 return {
                   colorHex: rgbAHex(pMed[0], pMed[1], pMed[2]),
                   grosorOctavosPt: Math.max(8, Math.min(28, Math.round((grosorPx / escala) * 8))),
                 };
               }
+              py = finY + 2;
             }
           }
         }
@@ -685,8 +723,13 @@ function inicializarConvertidor(): void {
       detectarTipoVinetaGrafica: (xPdf, yPdf, tamanoPdf) => {
         const [xInicio, yCentro] = aCanvas(xPdf, yPdf + tamanoPdf * 0.33);
         const minDx = Math.round(4 * escala);
-        const maxDx = Math.round(20 * escala);
-        const maxDy = Math.round(6 * escala);
+        const maxDx = Math.round(18 * escala);
+        const maxDy = Math.round(5 * escala);
+
+        // Confirmar primero que antes de la viñeta (a 22pt a la izquierda del texto) haya margen blanco limpio
+        const pMargenPrevio = obtenerPixel(xInicio - Math.round(22 * escala), yCentro);
+        if (distanciaColor(pMargenPrevio, [255, 255, 255]) > 25) return 'none';
+
         let minX = Infinity;
         let maxX = -Infinity;
         let minY = Infinity;
@@ -708,12 +751,21 @@ function inicializarConvertidor(): void {
           }
         }
 
-        if (pixelesOscuros < 3) return 'none';
+        const anchoMancha = maxX - minX + 1;
+        const altoMancha = maxY - minY + 1;
+        if (
+          pixelesOscuros < 3 ||
+          anchoMancha > Math.round(8 * escala) ||
+          altoMancha > Math.round(8 * escala)
+        ) {
+          return 'none';
+        }
+
         const cx = (minX + maxX) / 2;
         const cy = (minY + maxY) / 2;
-        const arriba = obtenerPixel(cx, minY - Math.round(4 * escala));
-        const abajo = obtenerPixel(cx, maxY + Math.round(4 * escala));
-        if (arriba[0] < 225 || abajo[0] < 225) return 'none';
+        const arriba = obtenerPixel(cx, minY - Math.round(3 * escala));
+        const abajo = obtenerPixel(cx, maxY + Math.round(3 * escala));
+        if (arriba[0] < 230 || abajo[0] < 230) return 'none';
 
         const pCentroVineta = obtenerPixel(cx, cy);
         return pCentroVineta[0] > 195 && pCentroVineta[1] > 195 && pCentroVineta[2] > 195
@@ -743,10 +795,10 @@ function inicializarConvertidor(): void {
 
         auxCtx.fillStyle = '#FFFFFF';
         for (const l of lineasTexto) {
-          const [, y2] = aCanvas(0, l.y - l.tamano * 1.2);
-          const [, y1] = aCanvas(anchoPagina, l.y + l.tamano * 1.9);
-          const topY = Math.max(0, Math.min(y1, y2) - Math.round(14 * escala));
-          const botY = Math.min(height, Math.max(y1, y2) + Math.round(14 * escala));
+          const [, y2] = aCanvas(0, l.y - l.tamano * 1.4);
+          const [, y1] = aCanvas(anchoPagina, l.y + l.tamano * 2.1);
+          const topY = Math.max(0, Math.min(y1, y2) - Math.round(16 * escala));
+          const botY = Math.min(height, Math.max(y1, y2) + Math.round(16 * escala));
           auxCtx.fillRect(0, topY, width, botY - topY);
         }
 
@@ -870,9 +922,9 @@ function inicializarConvertidor(): void {
   };
 
   /**
-   * Clasifica todos los IDs de fuente (`g_d0_f1`, `g_d0_f2`, `g_d0_f3`, ...) presentes en la página
-   * analizando su grosor medio por ID de fuente y su aparición inline, resolviendo PDFs con fuentes
-   * renombradas (`CairoFont-X-Y`) sin activar falsas negritas en párrafos normales.
+   * Clasifica los IDs de fuente (`g_d0_f1`, `g_d0_f2`, etc.) midiendo en el Canvas el grosor
+   * de trazo real y la inclinación de las astas verticales, sin marcar jamás subconjuntos
+   * de caracteres acentuados ni metadatos rectos como cursiva o negrita.
    */
   const clasificarFuentesPorId = (
     fragmentos: FragmentoTexto[],
@@ -880,16 +932,21 @@ function inicializarConvertidor(): void {
   ): void => {
     if (!fragmentos.length || !inspector) return;
 
+    const tamanoMediano = (() => {
+      const ordenados = [...fragmentos].map((f) => f.tamano).sort((a, b) => a - b);
+      return ordenados[Math.floor(ordenados.length / 2)] ?? 10.5;
+    })();
+
     const statsPorFuente = new Map<string, {
       totalChars: number;
       sumaDensidad: number;
       muestrasDensidad: number;
-      usadaEnTitulos: boolean;
+      votosInclinados: number;
+      usadaEnTitulosSeccion: boolean;
+      tieneCorchetesONumeros: boolean;
       yaClasificada: boolean;
       mono: boolean;
     }>();
-
-    const tamanoMax = Math.max(...fragmentos.map((f) => f.tamano));
 
     for (const f of fragmentos) {
       let st = statsPorFuente.get(f.fuente);
@@ -898,26 +955,32 @@ function inicializarConvertidor(): void {
           totalChars: 0,
           sumaDensidad: 0,
           muestrasDensidad: 0,
-          usadaEnTitulos: false,
+          votosInclinados: 0,
+          usadaEnTitulosSeccion: false,
+          tieneCorchetesONumeros: false,
           yaClasificada: f.negrita || f.cursiva,
           mono: f.mono,
         };
         statsPorFuente.set(f.fuente, st);
       }
-      st.totalChars += f.texto.trim().length;
-      if (f.tamano >= tamanoMax * 0.85 && f.tamano >= 14) {
-        st.usadaEnTitulos = true;
+      const txt = f.texto.trim();
+      st.totalChars += txt.length;
+      if (f.tamano >= tamanoMediano * 1.15) {
+        st.usadaEnTitulosSeccion = true;
       }
-      if (st.muestrasDensidad < 25 && f.texto.trim().length >= 3 && f.ancho >= 12) {
-        const med = inspector.medirDensidadEInclinacion(f.x, f.y, f.ancho, f.tamano);
-        if (med.densidad > 0.05) {
-          st.sumaDensidad += med.densidad;
+      if (/[\[\]\d]/.test(txt)) {
+        st.tieneCorchetesONumeros = true;
+      }
+      if (st.muestrasDensidad < 20 && txt.length >= 4 && f.ancho >= 14) {
+        const rasgos = inspector.medirRasgosOpticosGlifos(f.xOriginal, f.y, f.ancho, f.tamano);
+        if (rasgos.densidad > 0.05) {
+          st.sumaDensidad += rasgos.densidad;
           st.muestrasDensidad++;
+          if (rasgos.esInclinada) st.votosInclinados++;
         }
       }
     }
 
-    // Identificar la fuente principal del cuerpo (la que tiene más caracteres en la página)
     let fuenteCuerpo = '';
     let maxChars = -1;
     for (const [id, st] of statsPorFuente.entries()) {
@@ -938,10 +1001,15 @@ function inicializarConvertidor(): void {
     for (const [id, st] of statsPorFuente.entries()) {
       if (id === fuenteCuerpo || st.mono) continue;
       const densidadMedia = st.muestrasDensidad > 0 ? st.sumaDensidad / st.muestrasDensidad : 0;
+      const proporcionInclinada = st.muestrasDensidad > 0 ? st.votosInclinados / st.muestrasDensidad : 0;
 
-      if (st.usadaEnTitulos || densidadMedia >= densidadCuerpo * 1.11) {
+      if (st.usadaEnTitulosSeccion || densidadMedia >= densidadCuerpo * 1.24) {
         fuentesNegrita.add(id);
-      } else if (!st.yaClasificada) {
+      } else if (
+        !st.yaClasificada &&
+        !st.tieneCorchetesONumeros &&
+        (proporcionInclinada >= 0.45 || (st.totalChars <= 60 && densidadMedia < densidadCuerpo * 1.05))
+      ) {
         fuentesCursiva.add(id);
       }
     }
@@ -956,18 +1024,42 @@ function inicializarConvertidor(): void {
   };
 
   /**
-   * Subdivide cualquier fragmento donde el inspector óptico detecte intervalos parciales
-   * de subrayado o tachado, sin alterar jamás la negrita de palabras normales.
+   * Subdivide fragmentos con etiquetas iniciales en negrita seguidas de ":" y palabras con
+   * subrayado o tachado óptico parcial.
    */
   const subdividirFragmentoPorTrazosOpticos = (
     frag: FragmentoTexto,
     inspector?: InspectorVisual,
   ): FragmentoTexto[] => {
     const texto = frag.texto;
-    if (!inspector || texto.trim().length <= 1) return [frag];
+    if (texto.trim().length <= 1) return [frag];
+
+    // 1. Si un fragmento comienza con una etiqueta en mayúsculas o título de nota seguido de ":", separar la etiqueta en negrita
+    const matchEtiquetaInicial = texto.match(/^([A-ZÁÉÍÓÚÑ][^:]{2,48}:)(\s+\S.*)$/);
+    if (matchEtiquetaInicial && !frag.negrita) {
+      const etq = matchEtiquetaInicial[1];
+      const resto = matchEtiquetaInicial[2];
+      const prop = etq.length / Math.max(1, texto.length);
+      const anchoEtq = frag.ancho * prop;
+      return [
+        { ...frag, texto: etq, ancho: anchoEtq, negrita: true },
+        ...subdividirFragmentoPorTrazosOpticos(
+          {
+            ...frag,
+            texto: resto,
+            x: frag.x + anchoEtq,
+            xOriginal: frag.xOriginal + anchoEtq,
+            ancho: frag.ancho - anchoEtq,
+          },
+          inspector,
+        ),
+      ];
+    }
+
+    if (!inspector) return [frag];
 
     const { subrayados, tachados } = inspector.detectarIntervalosSubrayadoTachado(
-      frag.x,
+      frag.xOriginal,
       frag.y,
       frag.ancho,
       frag.tamano,
@@ -1004,6 +1096,7 @@ function inicializarConvertidor(): void {
       const iniRel = cursorChar / totalChars;
       const finRel = (cursorChar + parte.length) / totalChars;
       const xParte = frag.x + iniRel * frag.ancho;
+      const xOrigParte = frag.xOriginal + iniRel * frag.ancho;
       const anchoParte = (finRel - iniRel) * frag.ancho;
       cursorChar += parte.length;
 
@@ -1013,6 +1106,7 @@ function inicializarConvertidor(): void {
         ...frag,
         texto: parte,
         x: xParte,
+        xOriginal: xOrigParte,
         ancho: anchoParte,
         subrayado: solapaIntervalo(iniRel, finRel, subrayados),
         tachado: solapaIntervalo(iniRel, finRel, tachados),
@@ -1040,6 +1134,10 @@ function inicializarConvertidor(): void {
     return grupos;
   };
 
+  /**
+   * Construye una línea usando SIEMPRE `xOriginal` (coordenada real del PDF) cuando consulta el
+   * inspector visual del Canvas, evitando falsos positivos al procesar columnas desplazadas.
+   */
   const construirLineaDesdeFragmentos = (
     fragmentos: FragmentoTexto[],
     anchoPagina: number,
@@ -1048,6 +1146,7 @@ function inicializarConvertidor(): void {
     const ordenados = [...fragmentos].sort((a, b) => a.x - b.x);
     const tamano = ordenados.reduce((max, f) => Math.max(max, f.tamano), 6);
     const x = ordenados[0]?.x ?? 0;
+    const xOriginal = ordenados[0]?.xOriginal ?? x;
     const ultimo = ordenados[ordenados.length - 1];
     const ancho = ultimo ? ultimo.x + ultimo.ancho - x : 0;
     const columnas = segmentarColumnasEnLinea(ordenados, tamano);
@@ -1071,18 +1170,19 @@ function inicializarConvertidor(): void {
       .reduce((sum, f, _, arr) => sum + f.y / arr.length, ordenados[0]?.y ?? 0);
 
     const colorFondoLinea =
-      inspector?.muestrearFondoHex(x, yBase, ancho, tamano) ??
+      inspector?.muestrearFondoHex(xOriginal, yBase, ancho, tamano) ??
       inspector?.muestrearFondoBandaCompletaHex(yBase, tamano, anchoPagina);
-    const bordeIzquierdoColor = inspector?.detectarBordeIzquierdoHex(x, yBase, tamano, anchoPagina);
-    const caja = inspector?.detectarCajaCerradaReal(x, yBase, ancho, tamano, anchoPagina);
+    const bordeIzquierdoColor = inspector?.detectarBordeIzquierdoHex(xOriginal, yBase, tamano, anchoPagina);
+    const caja = inspector?.detectarCajaCerradaReal(xOriginal, yBase, ancho, tamano, anchoPagina);
     const yPrimerFrag = ordenados[0]?.y ?? yBase;
     const tamPrimerFrag = ordenados[0]?.tamano ?? tamano;
-    const tipoVinetaGrafica = inspector?.detectarTipoVinetaGrafica(x, yPrimerFrag, tamPrimerFrag) ?? 'none';
+    const tipoVinetaGrafica = inspector?.detectarTipoVinetaGrafica(xOriginal, yPrimerFrag, tamPrimerFrag) ?? 'none';
 
     return {
       fragmentos: ordenados,
       columnas,
       x,
+      xOriginal,
       y: yBase,
       ancho,
       tamano,
@@ -1125,6 +1225,7 @@ function inicializarConvertidor(): void {
       fragmentosIniciales.push({
         texto: elemento.str,
         x,
+        xOriginal: x,
         y,
         ancho: elemento.width,
         tamano,
@@ -1134,10 +1235,8 @@ function inicializarConvertidor(): void {
       });
     }
 
-    // Clasificar negritas y cursivas por ID de fuente en toda la página (soporta CairoFont-X-Y y subsets)
     clasificarFuentesPorId(fragmentosIniciales, inspector);
 
-    // Subdividir fragmentos donde existan subrayados o tachados ópticos parciales
     const fragmentosCrudos: FragmentoTexto[] = [];
     for (const frag of fragmentosIniciales) {
       fragmentosCrudos.push(...subdividirFragmentoPorTrazosOpticos(frag, inspector));
@@ -1225,7 +1324,7 @@ function inicializarConvertidor(): void {
     const piesDetectados: string[] = [];
 
     for (const linea of todasLasLineas) {
-      const enZonaInferior = linea.y < altoPagina * 0.08;
+      const enZonaInferior = linea.y < altoPagina * 0.085;
       const parecePie = /(page\s+\d+\s+of\s+\d+|página\s+\d+\s+de\s+\d+)/i.test(linea.texto);
       if (enZonaInferior || parecePie) {
         if (piesDetectados.length === 0) piesDetectados.push(linea.texto.replace(/\t+/g, ' — '));
@@ -1234,12 +1333,24 @@ function inicializarConvertidor(): void {
       }
     }
 
-    // Detectar reglas horizontales divisorias justo debajo de su línea correspondiente usando coordenadas directas de Canvas
+    // Escanear reglas horizontales divisorias exclusivamente en el espacio vacío entre líneas
     for (let idx = 0; idx < lineasContenido.length; idx++) {
       const lin = lineasContenido[idx];
-      const yLimInf = idx + 1 < lineasContenido.length ? lineasContenido[idx + 1].y + lineasContenido[idx + 1].tamano : 40;
-      if (lin.y - yLimInf >= 6) {
-        const regla = inspector?.detectarReglaDebajoDeLinea(lin.y, yLimInf, anchoPagina);
+      if (/[∑∫√χ∞≈≠≤≥±∂∆θω]/.test(lin.texto)) continue;
+
+      const sig = lineasContenido[idx + 1];
+      const yFondoActual = lin.y - lin.tamano * 0.32;
+      const yTopeSiguiente = sig
+        ? Math.max(lin.y - 28, sig.y + sig.tamano * 1.12)
+        : lin.y - 22;
+
+      if (yFondoActual - yTopeSiguiente >= 4.5) {
+        const regla = inspector?.detectarReglaDebajoDeLinea(
+          lin.xOriginal,
+          yFondoActual,
+          yTopeSiguiente,
+          anchoPagina,
+        );
         if (regla) {
           lin.bordeInferiorColor = regla.colorHex;
           lin.grosorBordeInferior = regla.grosorOctavosPt;
@@ -1254,34 +1365,43 @@ function inicializarConvertidor(): void {
   };
 
   /**
-   * Parte una línea en dos columnas usando las coordenadas Y/Tamaño reales del primer fragmento
-   * de la columna derecha para detectar con precisión sus viñetas gráficas (`•`).
+   * Parte un bloque de dos columnas preservando `xOriginal` para las consultas al Canvas
+   * y normalizando las coordenadas `x` de la columna derecha respecto a su propio margen izquierdo.
    */
-  const partirLineaEnX = (
-    linea: LineaTexto,
+  const separarColumnasParalelas = (
+    lineasSeccion: LineaTexto[],
     xCorte: number,
     anchoPagina: number,
     inspector?: InspectorVisual,
-  ): { izq: LineaTexto | null; der: LineaTexto | null } => {
-    const fragIzq = linea.fragmentos.filter((f) => f.x + f.ancho * 0.5 <= xCorte);
-    const fragDerOriginal = linea.fragmentos.filter((f) => f.x + f.ancho * 0.5 > xCorte);
-    const primeroDer = fragDerOriginal[0];
-    const tipoVinetaDer = primeroDer
-      ? (inspector?.detectarTipoVinetaGrafica(primeroDer.x, primeroDer.y, primeroDer.tamano) ?? 'none')
-      : 'none';
+  ): { lineasIzq: LineaTexto[]; lineasDer: LineaTexto[] } => {
+    const crudasIzq: FragmentoTexto[][] = [];
+    const crudasDer: FragmentoTexto[][] = [];
 
-    const fragDer = fragDerOriginal.map((f) => ({
-      ...f,
-      x: Math.max(48, f.x - xCorte + 48),
-    }));
-
-    const linIzq = fragIzq.length ? construirLineaDesdeFragmentos(fragIzq, xCorte, inspector) : null;
-    const linDer = fragDer.length ? construirLineaDesdeFragmentos(fragDer, anchoPagina - xCorte, inspector) : null;
-    if (linDer && tipoVinetaDer !== 'none') {
-      linDer.tipoVinetaGrafica = tipoVinetaDer;
+    for (const lin of lineasSeccion) {
+      const fIzq = lin.fragmentos.filter((f) => f.x + f.ancho * 0.5 <= xCorte);
+      const fDer = lin.fragmentos.filter((f) => f.x + f.ancho * 0.5 > xCorte);
+      if (fIzq.length) crudasIzq.push(fIzq);
+      if (fDer.length) crudasDer.push(fDer);
     }
 
-    return { izq: linIzq, der: linDer };
+    const xMinDer = crudasDer.length
+      ? Math.min(...crudasDer.map((grupo) => grupo[0].x))
+      : xCorte + 12;
+
+    const lineasIzq = crudasIzq.map((frags) =>
+      construirLineaDesdeFragmentos(frags, xCorte, inspector),
+    );
+
+    const lineasDer = crudasDer.map((frags) => {
+      const desplazados = frags.map((f) => ({
+        ...f,
+        x: Math.max(48, f.x - xMinDer + 48),
+        xOriginal: f.xOriginal,
+      }));
+      return construirLineaDesdeFragmentos(desplazados, anchoPagina - xCorte, inspector);
+    });
+
+    return { lineasIzq, lineasDer };
   };
 
   const detectarCanalDosColumnas = (
@@ -1601,7 +1721,8 @@ function inicializarConvertidor(): void {
   };
 
   /**
-   * Clasificador universal de estructuras: Tablas -> Fórmulas -> Columnas Paralelas -> Títulos/Listas/Cajas/Párrafos.
+   * Clasificador universal de bloques estructurales:
+   * Tablas -> Fórmulas -> Columnas Paralelas -> Títulos / Listas / Cajas / Párrafos Fluidos.
    */
   const clasificarBloquesEstructurales = (
     lineas: LineaTexto[],
@@ -1707,9 +1828,7 @@ function inicializarConvertidor(): void {
         let fIdx = i + 1;
         while (
           fIdx < lineas.length &&
-          lineas[fIdx - 1].y - lineas[fIdx].y <= 32 &&
-          !lineas[fIdx].bordeIzquierdoColor &&
-          !lineas[fIdx].bordeInferiorColor &&
+          lineas[fIdx - 1].y - lineas[fIdx].y <= 34 &&
           (contieneSimbolosMatematicos(lineas[fIdx]) ||
             lineas[fIdx].fragmentos.some((f) => f.mono) ||
             lineas[fIdx].texto.trim().length < 36)
@@ -1741,8 +1860,7 @@ function inicializarConvertidor(): void {
         const canalInicial = detectarCanalDosColumnas(actual, anchoPagina);
         if (canalInicial !== null && !actual.bordeInferiorColor) {
           const { xCorte, xInicioDer } = canalInicial;
-          const lineasIzq: LineaTexto[] = [];
-          const lineasDer: LineaTexto[] = [];
+          const lineasSeccionBicolumna: LineaTexto[] = [];
           let j = i;
           let lineasBicolumnaAlineadas = 0;
 
@@ -1758,26 +1876,32 @@ function inicializarConvertidor(): void {
             if (esFinSeccionColumnas) break;
 
             const canalLin = detectarCanalDosColumnas(lin, anchoPagina);
-            const { izq, der } = partirLineaEnX(lin, xCorte, anchoPagina, inspector);
+            const fIzq = lin.fragmentos.filter((f) => f.x + f.ancho * 0.5 <= xCorte);
+            const fDer = lin.fragmentos.filter((f) => f.x + f.ancho * 0.5 > xCorte);
 
             if (
               canalLin !== null ||
-              (izq && der) ||
-              (izq && !der && lin.x + lin.ancho < xCorte + 12) ||
-              (der && !izq && lin.x > xCorte - 12)
+              (fIzq.length > 0 && fDer.length > 0) ||
+              (fIzq.length > 0 && fDer.length === 0 && lin.x + lin.ancho < xCorte + 12) ||
+              (fDer.length > 0 && fIzq.length === 0 && lin.x > xCorte - 12)
             ) {
               if (canalLin && Math.abs(canalLin.xInicioDer - xInicioDer) <= 18) {
                 lineasBicolumnaAlineadas++;
               }
-              if (izq) lineasIzq.push(izq);
-              if (der) lineasDer.push(der);
+              lineasSeccionBicolumna.push(lin);
               j++;
             } else {
               break;
             }
           }
 
-          if (lineasBicolumnaAlineadas >= 4 && lineasIzq.length >= 4 && lineasDer.length >= 4) {
+          if (lineasBicolumnaAlineadas >= 4 && lineasSeccionBicolumna.length >= 4) {
+            const { lineasIzq, lineasDer } = separarColumnasParalelas(
+              lineasSeccionBicolumna,
+              xCorte,
+              anchoPagina,
+              inspector,
+            );
             const subIzq = clasificarBloquesEstructurales(lineasIzq, xCorte - 36, inspector, false);
             const subDer = clasificarBloquesEstructurales(lineasDer, anchoPagina - xCorte - 36, inspector, false);
             bloques.push({
@@ -1798,7 +1922,11 @@ function inicializarConvertidor(): void {
       const esSubtituloSeccion =
         !esTituloPrincipal &&
         (actual.tamano >= tamanoMediano * 1.14 ||
-          (todosNegrita && actual.ancho < anchoPagina * 0.85 && !actual.bordeIzquierdoColor && !actual.bordeInferiorColor && actual.bordeCaja === 'none'));
+          (todosNegrita &&
+            actual.ancho < anchoPagina * 0.85 &&
+            !actual.bordeIzquierdoColor &&
+            !actual.bordeInferiorColor &&
+            actual.bordeCaja === 'none'));
       const esTitulo = esTituloPrincipal || esSubtituloSeccion;
       const nivelTitulo: 1 | 2 | 3 = esTituloPrincipal
         ? 1
@@ -1830,22 +1958,23 @@ function inicializarConvertidor(): void {
       const margenDer = anchoPagina - (actual.x + actual.ancho);
       const centrado =
         permitirDivisionColumnas &&
-        Math.abs(margenIzq - margenDer) < 28 &&
-        margenIzq > 60 &&
+        margenIzq > 72 &&
+        margenDer > 72 &&
+        Math.abs(margenIzq - margenDer) < 42 &&
         actual.ancho < anchoPagina * 0.84;
 
       const tieneCaja = actual.bordeCaja !== 'none' || (centrado && Boolean(actual.colorFondoLinea));
       const matchLista = textoLimpio.match(/^(\s*([•●▪▸◦o\-–—*]|\d+[\.\)])\s+)/);
-
-      // Detectar ítems de lista indentados (tanto en flujo principal como dentro de columnas paralelas)
       const sangriaRelativa = actual.x - margenIzquierdoBase;
+
+      // Un ítem de lista tiene marcador explícito, viñeta gráfica detectada en su coordenada original o sangría de lista (nunca si está centrado o en caja)
       const esItemListaIndentado =
         !esTitulo &&
         !centrado &&
         !tieneCaja &&
         !actual.bordeIzquierdoColor &&
         !actual.colorFondoLinea &&
-        sangriaRelativa >= 8 &&
+        sangriaRelativa >= 9 &&
         sangriaRelativa <= 36 &&
         actual.ancho < anchoPagina * 0.82;
 
@@ -1884,21 +2013,30 @@ function inicializarConvertidor(): void {
         continue;
       }
 
-      // 5. Agrupar líneas continuas en un Párrafo Fluido o Callout con borde izquierdo y fondo sombreado
+      // 5. Agrupar líneas continuas en un Párrafo Fluido o Callout con borde izquierdo, respetando los saltos de párrafo
       const lineasParrafo: LineaTexto[] = [actual];
       let k = i + 1;
+      let interlineadoBaseParrafo = 0;
 
       while (k < lineas.length) {
         const prev = lineasParrafo[lineasParrafo.length - 1];
         const sig = lineas[k];
         const sigTexto = sig.texto.trim();
         const distanciaY = prev.y - sig.y;
+
+        if (interlineadoBaseParrafo === 0 && distanciaY > 0 && distanciaY <= prev.tamano * 1.55) {
+          interlineadoBaseParrafo = distanciaY;
+        }
+
+        const esSaltoDeParrafoMayor =
+          interlineadoBaseParrafo > 0 && distanciaY > interlineadoBaseParrafo * 1.18;
+
         const mismoTamano = Math.abs(prev.tamano - sig.tamano) <= 1.5;
         const sigSangria = sig.x - margenIzquierdoBase;
         const sigEsLista =
           /^(\s*([•●▪▸◦o\-–—*]|\d+[\.\)])\s+)/.test(sigTexto) ||
           sig.tipoVinetaGrafica !== 'none' ||
-          (!permitirDivisionColumnas && sigSangria >= 8 && sigSangria <= 36);
+          (sigSangria >= 9 && sigSangria <= 36);
         const sigTodosNegrita = sig.fragmentos.length > 0 && sig.fragmentos.every((f) => f.negrita);
         const sigEsTitulo =
           sig.tamano >= tamanoMediano * 1.14 ||
@@ -1915,11 +2053,12 @@ function inicializarConvertidor(): void {
         const terminaEnPuntoAparte =
           !compartenContenedor &&
           /[\.\!\?\:]$/.test(prev.texto.trim()) &&
-          prev.ancho < anchoPagina * 0.65;
+          prev.ancho < anchoPagina * 0.72;
 
         if (
           distanciaY > 0 &&
           distanciaY <= prev.tamano * 1.55 &&
+          !esSaltoDeParrafoMayor &&
           mismoTamano &&
           !sigEsLista &&
           !sigEsTitulo &&
@@ -2014,13 +2153,113 @@ function inicializarConvertidor(): void {
   };
 
   /**
-   * Construye el recuadro punteado único de fórmulas matemáticas idéntico al PDF original y 100% editable.
+   * Construye el contenedor punteado único para fórmulas matemáticas:
+   * - La fila 1 (`columnSpan: 3`) aloja la ecuación principal en una sola línea.
+   * - Si existe segunda línea (`2ab cos(θ)`), se coloca en la celda central (`22%` de ancho)
+   *   con su barra horizontal superior ajustada exactamente sobre `2ab cos(θ)`.
    */
   const construirTablaFormulaEditable = (
     apiWord: typeof import('docx'),
     bloque: Extract<BloqueEstructural, { tipo: 'parrafo' }>,
   ) => {
     const bordePunteado = { style: apiWord.BorderStyle.DASHED, size: 6, color: bloque.colorBordeCaja ?? '94A3B8' };
+    const bordeNulo = { style: apiWord.BorderStyle.NONE, size: 0, color: 'F8FAFC' };
+    const colorFondo = bloque.colorFondo ?? 'F8FAFC';
+
+    const formatearLineaFormula = (linea: LineaTexto) =>
+      linea.fragmentos.map((frag, idxF) => {
+        const ant = linea.fragmentos[idxF - 1];
+        const brecha = ant ? frag.x - (ant.x + ant.ancho) : 0;
+        const pegado = frag.superindice || frag.subindice || ant?.superindice || ant?.subindice;
+        const sep = idxF === 0
+          ? ''
+          : frag.texto.trim() === '|' || ant?.texto.trim() === '|'
+            ? '    '
+            : brecha > (pegado ? 2.5 : 1.2)
+              ? ' '
+              : '';
+        return new apiWord.TextRun({
+          text: `${sep}${frag.texto}`,
+          size: (frag.superindice || frag.subindice)
+            ? Math.max(18, Math.round(linea.tamano * 2))
+            : Math.max(18, Math.round(frag.tamano * 2)),
+          bold: frag.negrita || frag.texto.trim() === '|',
+          superScript: frag.superindice,
+          subScript: frag.subindice,
+          color: frag.colorTexto ?? '0F172A',
+          noProof: true,
+          font: 'Courier New',
+        });
+      });
+
+    if (bloque.lineas.length >= 2) {
+      const primera = bloque.lineas[0];
+      const segunda = bloque.lineas[1];
+
+      return new apiWord.Table({
+        width: { size: 100, type: apiWord.WidthType.PERCENTAGE },
+        borders: {
+          top: bordePunteado,
+          bottom: bordePunteado,
+          left: bordePunteado,
+          right: bordePunteado,
+          insideHorizontal: bordeNulo,
+          insideVertical: bordeNulo,
+        },
+        rows: [
+          new apiWord.TableRow({
+            children: [
+              new apiWord.TableCell({
+                columnSpan: 3,
+                width: { size: 100, type: apiWord.WidthType.PERCENTAGE },
+                shading: { fill: colorFondo },
+                borders: { top: bordePunteado, left: bordePunteado, right: bordePunteado, bottom: bordeNulo },
+                margins: { top: 100, bottom: 20, left: 140, right: 140 },
+                children: [
+                  new apiWord.Paragraph({
+                    alignment: apiWord.AlignmentType.CENTER,
+                    children: formatearLineaFormula(primera),
+                  }),
+                ],
+              }),
+            ],
+          }),
+          new apiWord.TableRow({
+            children: [
+              new apiWord.TableCell({
+                width: { size: 40, type: apiWord.WidthType.PERCENTAGE },
+                shading: { fill: colorFondo },
+                borders: { top: bordeNulo, bottom: bordePunteado, left: bordePunteado, right: bordeNulo },
+                children: [new apiWord.Paragraph({})],
+              }),
+              new apiWord.TableCell({
+                width: { size: 20, type: apiWord.WidthType.PERCENTAGE },
+                shading: { fill: colorFondo },
+                borders: {
+                  top: { style: apiWord.BorderStyle.SINGLE, size: 8, color: '0F172A' },
+                  bottom: bordePunteado,
+                  left: bordeNulo,
+                  right: bordeNulo,
+                },
+                margins: { top: 30, bottom: 90, left: 40, right: 40 },
+                children: [
+                  new apiWord.Paragraph({
+                    alignment: apiWord.AlignmentType.CENTER,
+                    children: formatearLineaFormula(segunda),
+                  }),
+                ],
+              }),
+              new apiWord.TableCell({
+                width: { size: 40, type: apiWord.WidthType.PERCENTAGE },
+                shading: { fill: colorFondo },
+                borders: { top: bordeNulo, bottom: bordePunteado, left: bordeNulo, right: bordePunteado },
+                children: [new apiWord.Paragraph({})],
+              }),
+            ],
+          }),
+        ],
+      });
+    }
 
     return new apiWord.Table({
       width: { size: 100, type: apiWord.WidthType.PERCENTAGE },
@@ -2029,7 +2268,7 @@ function inicializarConvertidor(): void {
           children: [
             new apiWord.TableCell({
               width: { size: 100, type: apiWord.WidthType.PERCENTAGE },
-              shading: { fill: bloque.colorFondo ?? 'F8FAFC' },
+              shading: { fill: colorFondo },
               borders: {
                 top: bordePunteado,
                 bottom: bordePunteado,
@@ -2037,46 +2276,14 @@ function inicializarConvertidor(): void {
                 right: bordePunteado,
               },
               margins: { top: 110, bottom: 110, left: 150, right: 150 },
-              children: bloque.lineas.map((l, idxL) => {
-                // Si es la segunda línea (ej. "2ab cos(θ)" bajo la barra de fracción/raíz), incluir su barra horizontal superior
-                const corridas = l.fragmentos.map((frag, idxF) => {
-                  const ant = l.fragmentos[idxF - 1];
-                  const brecha = ant ? frag.x - (ant.x + ant.ancho) : 0;
-                  const pegado = frag.superindice || frag.subindice || ant?.superindice || ant?.subindice;
-                  const sep = idxF === 0
-                    ? ''
-                    : frag.texto.trim() === '|' || ant?.texto.trim() === '|'
-                      ? '   '
-                      : brecha > (pegado ? 2.5 : 1.2)
-                        ? ' '
-                        : '';
-                  return new apiWord.TextRun({
-                    text: `${sep}${frag.texto}`,
-                    size: (frag.superindice || frag.subindice)
-                      ? Math.max(18, Math.round(l.tamano * 2))
-                      : Math.max(18, Math.round(frag.tamano * 2)),
-                    bold: frag.negrita || frag.texto.trim() === '|',
-                    superScript: frag.superindice,
-                    subScript: frag.subindice,
-                    // En la segunda línea (denominador/radicando envuelto), aplicar línea superior continua
-                    color: frag.colorTexto ?? '0F172A',
-                    noProof: true,
-                    font: 'Courier New',
-                  });
-                });
-
-                return new apiWord.Paragraph({
-                  alignment: apiWord.AlignmentType.CENTER,
-                  border: idxL > 0
-                    ? {
-                        top: { style: apiWord.BorderStyle.SINGLE, size: 6, color: '0F172A', space: 2 },
-                      }
-                    : undefined,
-                  indent: idxL > 0 ? { left: 2520, right: 2520 } : undefined,
-                  spacing: { before: idxL === 0 ? 10 : 30, after: 10 },
-                  children: corridas,
-                });
-              }),
+              children: bloque.lineas.map(
+                (l) =>
+                  new apiWord.Paragraph({
+                    alignment: apiWord.AlignmentType.CENTER,
+                    spacing: { before: 20, after: 20 },
+                    children: formatearLineaFormula(l),
+                  }),
+              ),
             }),
           ],
         }),
@@ -2251,7 +2458,9 @@ function inicializarConvertidor(): void {
           size: 6,
           color: bloque.colorBordeCaja ?? 'CBD5E1',
         };
-        const tieneBordeIzq = Boolean(bloque.colorBordeIzq) || Boolean(bloque.colorFondo && bloque.bordeCaja === 'none' && !bloque.centrado);
+        const tieneBordeIzq =
+          Boolean(bloque.colorBordeIzq) ||
+          Boolean(bloque.colorFondo && bloque.bordeCaja === 'none' && !bloque.centrado);
         const bordeAcentoIzq = {
           style: apiWord.BorderStyle.SINGLE,
           size: 24,
@@ -2311,7 +2520,7 @@ function inicializarConvertidor(): void {
       if (necesitaPrefijoVineta) {
         corridasTotales.push(
           new apiWord.TextRun({
-            text: bloque.nivelLista >= 1 ? '◦ ' : '• ',
+            text: bloque.nivelLista >= 1 ? '◦  ' : '•  ',
             size: Math.max(16, Math.round(primeraLinea.tamano * 2)),
             noProof: true,
             font: 'Georgia',
@@ -2325,7 +2534,7 @@ function inicializarConvertidor(): void {
         const fragsLimpios =
           idxLinea === 0 && bloque.esLista && !bloque.esOrdenada && bloque.nivelLista >= 1
             ? linea.fragmentos.map((f, iF) =>
-                iF === 0 ? { ...f, texto: f.texto.replace(/^\s*[•●▪▸]\s*/, '◦ ') } : f,
+                iF === 0 ? { ...f, texto: f.texto.replace(/^\s*[•●▪▸]\s*/, '◦  ') } : f,
               )
             : linea.fragmentos;
 
@@ -2384,7 +2593,7 @@ function inicializarConvertidor(): void {
               }
             : undefined,
           spacing: {
-            before: bloque.esTitulo ? 160 : 50,
+            before: bloque.esTitulo ? 160 : 55,
             after: bloque.esTitulo || bloque.colorBordeInf ? 115 : bloque.esLista ? 45 : 115,
             line: 268,
           },
@@ -2418,11 +2627,11 @@ function inicializarConvertidor(): void {
 
     for (const mascara of mascaras) {
       const puntoInicial = viewport.convertToViewportPoint(
-        mascara.x,
+        mascara.xOriginal,
         mascara.y - mascara.tamano * 0.28,
       );
       const puntoFinal = viewport.convertToViewportPoint(
-        mascara.x + mascara.ancho,
+        mascara.xOriginal + mascara.ancho,
         mascara.y + mascara.tamano * 0.98,
       );
       const xMin = Math.min(puntoInicial[0], puntoFinal[0]);
@@ -2467,6 +2676,7 @@ function inicializarConvertidor(): void {
       const fragmento: FragmentoTexto = {
         texto: linea.text.trim(),
         x,
+        xOriginal: x,
         y,
         ancho,
         tamano,
@@ -2480,6 +2690,7 @@ function inicializarConvertidor(): void {
         fragmentos: [fragmento],
         columnas: [[fragmento]],
         x,
+        xOriginal: x,
         y,
         ancho,
         tamano,
