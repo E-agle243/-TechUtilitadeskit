@@ -42,15 +42,5 @@ export default defineConfig({
       'Cross-Origin-Embedder-Policy': 'require-corp',
     },
   },
-  build: {
-    rollupOptions: {
-      input: {
-        remover: 'remover.html',
-        ocr: 'orc.html',
-        transcribe: 'transcribe.html',
-        toword: 'toword.html',
-      },
-    },
-  },
 });
 
